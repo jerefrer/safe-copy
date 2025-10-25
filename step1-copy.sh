@@ -17,6 +17,12 @@ DEST_BASE=$3
 DEST_DIR="$DEST_BASE/video_rushes/$DRIVE_NAME"
 LOG_DIR="$DEST_BASE/_logs"
 MANIFEST_DIR="$DEST_BASE/_manifests"
+LOG_FILE="$LOG_DIR/${DRIVE_NAME}_report.txt"
+
+# Logging function
+log() {
+    echo "$@" | tee -a "$LOG_FILE"
+}
 
 # Check if destination exists
 if [ ! -d "$DEST_BASE" ]; then
@@ -25,6 +31,9 @@ if [ ! -d "$DEST_BASE" ]; then
 fi
 
 mkdir -p "$DEST_DIR" "$LOG_DIR" "$MANIFEST_DIR"
+
+# Initialize log file
+> "$LOG_FILE"
 
 # Find the mount point
 MOUNT_POINT=$(diskutil info "$SOURCE_DISK" | grep "Mount Point" | cut -d: -f2 | xargs)
@@ -53,48 +62,48 @@ echo "╔═══════════════════════�
 echo "║      STEP 1: COPY FILES FROM OLD DRIVE        ║"
 echo "╚════════════════════════════════════════════════╝"
 echo ""
-echo "Source: $MOUNT_POINT" | tee "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Source Disk: $SOURCE_DISK" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Destination: $DEST_DIR" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Started: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+log "Source: $MOUNT_POINT"
+log "Source Disk: $SOURCE_DISK"
+log "Destination: $DEST_DIR"
+log "Started: $(date)"
+log ""
 
 # COPY FILES
-echo "=== COPYING FILES (Priority: Get data off!) ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+log "=== COPYING FILES (Priority: Get data off!) ==="
 sudo rsync -avhx \
   --progress \
   --stats \
   --log-file="$LOG_DIR/${DRIVE_NAME}_rsync.log" \
-  "$MOUNT_POINT/" "$DEST_DIR/" 2>&1 | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+  "$MOUNT_POINT/" "$DEST_DIR/" 2>&1 | tee -a "$LOG_FILE"
 
 RSYNC_EXIT=${PIPESTATUS[0]}
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+log ""
 
 if [ $RSYNC_EXIT -eq 0 ]; then
-    echo "✅ Copy completed successfully!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    log "✅ Copy completed successfully!"
     COPY_STATUS="SUCCESS"
 else
-    echo "⚠️  Copy completed with errors (exit code: $RSYNC_EXIT)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    log "⚠️  Copy completed with errors (exit code: $RSYNC_EXIT)"
     COPY_STATUS="PARTIAL"
 fi
 
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "✅ DATA IS NOW SAFE ON DESTINATION!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+log ""
+log "✅ DATA IS NOW SAFE ON DESTINATION!"
+log ""
 
 # Summary
-echo "╔════════════════════════════════════════════════╗" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "║              STEP 1 COMPLETE                   ║" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "╚════════════════════════════════════════════════╝" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Drive Name: $DRIVE_NAME" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Total Files: $(find "$DEST_DIR" -type f 2>/dev/null | wc -l | xargs)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Total Size: $(du -sh "$DEST_DIR" 2>/dev/null | cut -f1)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Copy Status: $COPY_STATUS" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Completed: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "📁 Files: $DEST_DIR" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "📄 Report: $LOG_DIR/${DRIVE_NAME}_report.txt" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+log "╔════════════════════════════════════════════════╗"
+log "║              STEP 1 COMPLETE                   ║"
+log "╚════════════════════════════════════════════════╝"
+log "Drive Name: $DRIVE_NAME"
+log "Total Files: $(find "$DEST_DIR" -type f 2>/dev/null | wc -l | xargs)"
+log "Total Size: $(du -sh "$DEST_DIR" 2>/dev/null | cut -f1)"
+log "Copy Status: $COPY_STATUS"
+log "Completed: $(date)"
+log ""
+log "📁 Files: $DEST_DIR"
+log "📄 Report: $LOG_FILE"
+log ""
 
 echo "════════════════════════════════════════════════"
 echo "Next step: Verify the copy with hash comparison"
