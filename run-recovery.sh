@@ -74,12 +74,28 @@ echo "  Step 3: Verify copy integrity"
 echo "  Step 4: Detect duplicate files"
 echo ""
 
-# Get parameters
-read -p "Enter source disk (e.g., /dev/disk4s2): " SOURCE_DISK
-read -p "Enter drive name (e.g., \"Project_2015\"): " DRIVE_NAME
-read -p "Enter destination path (e.g., /Volumes/Exos24TB): " DEST_BASE
-
-echo ""
+# Get parameters from command line or prompt interactively
+if [ "$#" -eq 3 ]; then
+    # Use command line arguments
+    SOURCE_DISK=$1
+    DRIVE_NAME=$2
+    DEST_BASE=$3
+    echo "Using command line arguments:"
+elif [ "$#" -eq 0 ]; then
+    # Interactive mode
+    read -p "Enter source disk (e.g., /dev/disk4s2): " SOURCE_DISK
+    read -p "Enter drive name (e.g., \"Project_2015\"): " DRIVE_NAME
+    read -p "Enter destination path (e.g., /Volumes/Exos24TB): " DEST_BASE
+    echo ""
+else
+    print_error "Invalid number of arguments!"
+    echo "Usage: $0 [source_disk] [drive_name] [destination_path]"
+    echo "Example: $0 /dev/disk4s2 \"Project_2015\" /Volumes/Exos24TB"
+    echo ""
+    echo "Or run without arguments for interactive mode:"
+    echo "  $0"
+    exit 1
+fi
 
 # Validate inputs
 if [ -z "$SOURCE_DISK" ] || [ -z "$DRIVE_NAME" ] || [ -z "$DEST_BASE" ]; then
