@@ -1,5 +1,5 @@
 #!/bin/bash
-# OLD DRIVE RUSHES RECOVERY - With progress feedback
+# OLD DRIVE RUSHES RECOVERY - With hashdeep verification and duplicate detection
 
 if [ "$#" -ne 3 ]; then
     echo "Usage: sudo $0 <source_disk> <drive_name> <destination_path>"
@@ -24,6 +24,12 @@ if [ ! -d "$DEST_BASE" ]; then
 fi
 
 mkdir -p "$DEST_DIR" "$LOG_DIR" "$MANIFEST_DIR"
+
+# Check for hashdeep
+if ! command -v hashdeep &> /dev/null; then
+    echo "ERROR: hashdeep not found. Install with: brew install md5deep"
+    exit 1
+fi
 
 # Find the mount point
 MOUNT_POINT=$(diskutil info "$SOURCE_DISK" | grep "Mount Point" | cut -d: -f2 | xargs)
@@ -80,27 +86,20 @@ echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 
 # STEP 2: DATA IS SAFE
 echo "=== STEP 2: Data copied ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "✅ You can now unmount the source drive using Disk Arbitrator" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "🎉 DATA IS NOW SAFE ON DESTINATION!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "✅ DATA IS NOW SAFE ON DESTINATION!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 
-# STEP 3: Ask about source verification
-echo "=== STEP 3: SOURCE VERIFICATION (Optional) ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+# STEP 3: Hash-based verification with hashdeep
+echo "=== STEP 3: VERIFICATION WITH HASHDEEP ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Your data is now safely copied to the destination." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "Creating hash manifests for verification..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Do you want to verify against the source drive?" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "This requires reading the source again (with PROGRESS feedback)." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-read -p "Verify source? (y/N): " -n 1 -r
+
+read -p "Verify with hashdeep? (Y/n): " -n 1 -r
 echo ""
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    echo "=== FILE-BY-FILE VERIFICATION WITH PROGRESS ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    
-    # Check if still mounted
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    # Check if source still mounted
     MOUNT_POINT=$(diskutil info "$SOURCE_DISK" | grep "Mount Point" | cut -d: -f2 | xargs)
     if [ -z "$MOUNT_POINT" ] || [ "$MOUNT_POINT" = "" ]; then
         echo "Source drive is not mounted. Please mount it read-only again using Disk Arbitrator."
@@ -108,82 +107,178 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         MOUNT_POINT=$(diskutil info "$SOURCE_DISK" | grep "Mount Point" | cut -d: -f2 | xargs)
     fi
     
-    # Count total files first
-    echo "Counting files..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    TOTAL_FILES=$(find "$MOUNT_POINT" -type f | wc -l | xargs)
-    echo "Found $TOTAL_FILES files to verify" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    SOURCE_MANIFEST="$MANIFEST_DIR/${DRIVE_NAME}_source_manifest.txt"
+    DEST_MANIFEST="$MANIFEST_DIR/${DRIVE_NAME}_manifest.txt"
+    
+    echo "Creating source manifest..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "This will take approximately 11-15 hours for 8TB..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Started: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    # Hash source (this stresses the old drive)
+    hashdeep -r -l -c sha256 "$MOUNT_POINT" > "$SOURCE_MANIFEST" 2>&1
+    SOURCE_HASH_EXIT=$?
+    
+    echo "Source hashing completed: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     
-    # Verify file by file with progress
-    CURRENT=0
-    MATCHES=0
-    MISMATCHES=0
-    MISSING=0
+    if [ $SOURCE_HASH_EXIT -ne 0 ]; then
+        echo "⚠️  Warning: Source hashing had errors" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    fi
     
-    echo "Verifying files..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Creating destination manifest..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "This will take approximately 8-10 hours for 8TB..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Started: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     
-    while IFS= read -r source_file; do
-        CURRENT=$((CURRENT + 1))
-        
-        # Get relative path
-        rel_path="${source_file#$MOUNT_POINT/}"
-        dest_file="$DEST_DIR/$rel_path"
-        
-        # Progress indicator
-        percent=$((CURRENT * 100 / TOTAL_FILES))
-        printf "\r[%3d%%] %d/%d: %s" "$percent" "$CURRENT" "$TOTAL_FILES" "$(basename "$source_file")" | cut -c1-80
-        
-        # Check if destination file exists
-        if [ ! -f "$dest_file" ]; then
-            echo "" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            echo "MISSING: $rel_path" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            MISSING=$((MISSING + 1))
-            continue
-        fi
-        
-        # Compare checksums
-        source_hash=$(shasum -a 256 "$source_file" | awk '{print $1}')
-        dest_hash=$(shasum -a 256 "$dest_file" | awk '{print $1}')
-        
-        if [ "$source_hash" = "$dest_hash" ]; then
-            MATCHES=$((MATCHES + 1))
-        else
-            echo "" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            echo "MISMATCH: $rel_path" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            echo "  Source: $source_hash" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            echo "  Dest:   $dest_hash" >> "$LOG_DIR/${DRIVE_NAME}_verify.log"
-            MISMATCHES=$((MISMATCHES + 1))
-        fi
-    done < <(find "$MOUNT_POINT" -type f)
+    # Hash destination (faster, safer drive)
+    hashdeep -r -l -c sha256 "$DEST_DIR" > "$DEST_MANIFEST" 2>&1
+    DEST_HASH_EXIT=$?
     
-    echo "" # New line after progress
+    echo "Destination hashing completed: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    # Now compare the manifests
+    echo "Comparing manifests to verify copy integrity..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    VERIFY_LOG="$LOG_DIR/${DRIVE_NAME}_verify_details.txt"
+    
+    # Parse both manifests and compare
+    # Create temporary sorted hash lists (hash only, for comparison)
+    awk 'NR>2 {print $2}' "$SOURCE_MANIFEST" | sort > /tmp/source_hashes_$$.txt
+    awk 'NR>2 {print $2}' "$DEST_MANIFEST" | sort > /tmp/dest_hashes_$$.txt
+    
+    # Count files
+    SOURCE_FILE_COUNT=$(wc -l < /tmp/source_hashes_$$.txt | xargs)
+    DEST_FILE_COUNT=$(wc -l < /tmp/dest_hashes_$$.txt | xargs)
+    
+    echo "Source files: $SOURCE_FILE_COUNT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Destination files: $DEST_FILE_COUNT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    # Find missing files (in source but not in destination)
+    comm -23 /tmp/source_hashes_$$.txt /tmp/dest_hashes_$$.txt > /tmp/missing_$$.txt
+    MISSING_COUNT=$(wc -l < /tmp/missing_$$.txt | xargs)
+    
+    # Find extra files (in destination but not in source - shouldn't happen)
+    comm -13 /tmp/source_hashes_$$.txt /tmp/dest_hashes_$$.txt > /tmp/extra_$$.txt
+    EXTRA_COUNT=$(wc -l < /tmp/extra_$$.txt | xargs)
+    
+    # Perfect matches
+    comm -12 /tmp/source_hashes_$$.txt /tmp/dest_hashes_$$.txt > /tmp/matches_$$.txt
+    MATCH_COUNT=$(wc -l < /tmp/matches_$$.txt | xargs)
+    
     echo "=== VERIFICATION RESULTS ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    echo "Total files checked: $TOTAL_FILES" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    echo "✅ Matches: $MATCHES" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "✅ Perfect matches: $MATCH_COUNT files" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     
-    if [ $MISMATCHES -gt 0 ]; then
-        echo "❌ Mismatches: $MISMATCHES" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    if [ $MISSING_COUNT -gt 0 ]; then
+        echo "❌ Missing from destination: $MISSING_COUNT files" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "" >> "$VERIFY_LOG"
+        echo "MISSING FILES (in source but not in destination):" >> "$VERIFY_LOG"
+        while read hash; do
+            grep "$hash" "$SOURCE_MANIFEST" >> "$VERIFY_LOG"
+        done < /tmp/missing_$$.txt
     fi
     
-    if [ $MISSING -gt 0 ]; then
-        echo "⚠️  Missing: $MISSING" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    if [ $EXTRA_COUNT -gt 0 ]; then
+        echo "⚠️  Extra files in destination: $EXTRA_COUNT files" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "" >> "$VERIFY_LOG"
+        echo "EXTRA FILES (in destination but not in source):" >> "$VERIFY_LOG"
+        while read hash; do
+            grep "$hash" "$DEST_MANIFEST" >> "$VERIFY_LOG"
+        done < /tmp/extra_$$.txt
     fi
     
-    if [ $MISMATCHES -eq 0 ] && [ $MISSING -eq 0 ]; then
-        echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    # Clean up temp files
+    rm -f /tmp/source_hashes_$$.txt /tmp/dest_hashes_$$.txt /tmp/missing_$$.txt /tmp/extra_$$.txt /tmp/matches_$$.txt
+    
+    echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    if [ $MISSING_COUNT -eq 0 ] && [ $EXTRA_COUNT -eq 0 ] && [ $SOURCE_FILE_COUNT -eq $DEST_FILE_COUNT ]; then
         echo "✅ ✅ ✅ VERIFICATION PASSED ✅ ✅ ✅" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-        echo "All files match perfectly!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "All $MATCH_COUNT files copied perfectly!" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
         VERIFY_STATUS="VERIFIED"
     else
-        echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
         echo "❌ VERIFICATION ISSUES FOUND" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-        echo "See details in: $LOG_DIR/${DRIVE_NAME}_verify.log" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "See details in: $VERIFY_LOG" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
         VERIFY_STATUS="FAILED"
     fi
+    
+    echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    # STEP 4: Check for duplicates in destination
+    echo "=== STEP 4: DUPLICATE DETECTION ===" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Analyzing destination for duplicate files..." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    DUPES_REPORT="$LOG_DIR/${DRIVE_NAME}_duplicates.txt"
+    
+    # Find duplicates using awk
+    awk '
+    BEGIN {
+        FS = ","
+        total_wasted = 0
+    }
+    
+    # Skip header lines
+    /^%%%/ || /^#/ || /^$/ {
+        next
+    }
+    
+    {
+        size = $1
+        hash = $2
+        filepath = $3
+        for (i = 4; i <= NF; i++) filepath = filepath "," $i
+        
+        hashes[hash] = hashes[hash] (hashes[hash] ? "\n      " : "") filepath
+        sizes[hash] = size
+        count[hash]++
+    }
+    
+    END {
+        dup_count = 0
+        
+        for (h in count) {
+            if (count[h] > 1) {
+                dup_count++
+                size_mb = sizes[h] / 1024 / 1024
+                wasted = sizes[h] * (count[h] - 1)
+                wasted_mb = wasted / 1024 / 1024
+                total_wasted += wasted
+                
+                printf "\nDuplicate Set #%d:\n", dup_count
+                printf "  Hash: %s\n", substr(h, 1, 16) "..."
+                printf "  File size: %s bytes (%.2f MB)\n", sizes[h], size_mb
+                printf "  Copies: %d\n", count[h]
+                printf "  Wasted space: %s bytes (%.2f MB)\n", wasted, wasted_mb
+                printf "  Files:\n      %s\n", hashes[h]
+            }
+        }
+        
+        printf "\n============================================\n"
+        if (dup_count == 0) {
+            printf "✅ No duplicates found!\n"
+        } else {
+            printf "Total duplicate sets: %d\n", dup_count
+            printf "Total wasted space: %s bytes (%.2f GB)\n", total_wasted, total_wasted/1024/1024/1024
+        }
+    }
+    ' "$DEST_MANIFEST" > "$DUPES_REPORT"
+    
+    # Extract summary for main report
+    DUPE_COUNT=$(grep -c "Duplicate Set" "$DUPES_REPORT" || echo "0")
+    WASTED_SPACE=$(grep "Total wasted space" "$DUPES_REPORT" | awk '{print $4, $5, $6}')
+    
+    if [ "$DUPE_COUNT" -eq 0 ]; then
+        echo "✅ No duplicate files found" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    else
+        echo "⚠️  Found $DUPE_COUNT sets of duplicate files" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "   Wasted space: $WASTED_SPACE" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+        echo "   See detailed report: $DUPES_REPORT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    fi
+    
 else
-    echo "Skipping source verification." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "Skipping verification." | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
     VERIFY_STATUS="SKIPPED"
+    DUPE_COUNT="N/A"
 fi
 
 # Summary
@@ -192,24 +287,39 @@ echo "╔═══════════════════════�
 echo "║                    SUMMARY                     ║" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "╚════════════════════════════════════════════════╝" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "Drive Name: $DRIVE_NAME" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Total Files: $(find "$DEST_DIR" -type f | wc -l | xargs)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-echo "Total Size: $(du -sh "$DEST_DIR" | cut -f1)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "Total Files: $(find "$DEST_DIR" -type f 2>/dev/null | wc -l | xargs)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "Total Size: $(du -sh "$DEST_DIR" 2>/dev/null | cut -f1)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "Copy Status: $COPY_STATUS" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "Verification: $VERIFY_STATUS" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+
 if [ "$VERIFY_STATUS" = "VERIFIED" ]; then
-    echo "  ✅ $MATCHES files verified" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "  ✅ $MATCH_COUNT files verified perfectly" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 elif [ "$VERIFY_STATUS" = "FAILED" ]; then
-    echo "  ✅ Matches: $MATCHES" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    echo "  ❌ Mismatches: $MISMATCHES" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-    echo "  ⚠️  Missing: $MISSING" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "  ✅ Matches: $MATCH_COUNT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    [ $MISSING_COUNT -gt 0 ] && echo "  ❌ Missing: $MISSING_COUNT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    [ $EXTRA_COUNT -gt 0 ] && echo "  ⚠️  Extra: $EXTRA_COUNT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 fi
+
+if [ "$VERIFY_STATUS" != "SKIPPED" ]; then
+    echo "Duplicates: $DUPE_COUNT sets found" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+fi
+
 echo "Completed: $(date)" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 echo "📁 Files: $DEST_DIR" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
-if [ "$VERIFY_STATUS" = "FAILED" ]; then
-    echo "📋 Detailed errors: $LOG_DIR/${DRIVE_NAME}_verify.log" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "📄 Main Report: $LOG_DIR/${DRIVE_NAME}_report.txt" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+
+if [ "$VERIFY_STATUS" != "SKIPPED" ]; then
+    echo "📋 Hash Manifests:" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "   Source: $SOURCE_MANIFEST" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    echo "   Destination: $DEST_MANIFEST" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    
+    [ -f "$VERIFY_LOG" ] && echo "📋 Verification details: $VERIFY_LOG" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+    [ "$DUPE_COUNT" != "0" ] && [ "$DUPE_COUNT" != "N/A" ] && echo "📋 Duplicates report: $DUPES_REPORT" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 fi
-echo "📄 Full Report: $LOG_DIR/${DRIVE_NAME}_report.txt" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+
+echo "" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
+echo "You can now safely unmount the source drive using Disk Arbitrator" | tee -a "$LOG_DIR/${DRIVE_NAME}_report.txt"
 
 if [ "$VERIFY_STATUS" = "VERIFIED" ] && [ "$COPY_STATUS" = "SUCCESS" ]; then
     exit 0
