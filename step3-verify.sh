@@ -44,8 +44,10 @@ echo ""
 
 # Parse both manifests and compare
 # Create temporary sorted hash lists (hash only, for comparison)
-awk 'NR>2 && /^[0-9]/ {print $2}' "$SOURCE_MANIFEST" | sort > /tmp/source_hashes_$$.txt
-awk 'NR>2 && /^[0-9]/ {print $2}' "$DEST_MANIFEST" | sort > /tmp/dest_hashes_$$.txt
+# Format is CSV: size,hash,filename
+# Use sort -u to remove any duplicate entries from interrupted hashing
+awk -F',' '/^[0-9]/ {print $2}' "$SOURCE_MANIFEST" | sort -u > /tmp/source_hashes_$$.txt
+awk -F',' '/^[0-9]/ {print $2}' "$DEST_MANIFEST" | sort -u > /tmp/dest_hashes_$$.txt
 
 # Count files
 SOURCE_FILE_COUNT=$(wc -l < /tmp/source_hashes_$$.txt | xargs)

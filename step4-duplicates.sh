@@ -51,6 +51,12 @@ BEGIN {
     filepath = $3
     for (i = 4; i <= NF; i++) filepath = filepath "," $i
     
+    # Skip if we've already seen this exact hash+filepath combination
+    # (handles duplicate manifest entries from interrupted hashing)
+    key = hash "||" filepath
+    if (seen[key]) next
+    seen[key] = 1
+    
     hashes[hash] = hashes[hash] (hashes[hash] ? "\n      " : "") filepath
     sizes[hash] = size
     count[hash]++

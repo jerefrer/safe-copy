@@ -98,6 +98,14 @@ log ""
 log "✅ DATA IS NOW SAFE ON DESTINATION!"
 log ""
 
+# Collect file sizes for accurate progress tracking in step 2
+log "Collecting file size information for progress tracking..."
+SIZES_FILE="$MANIFEST_DIR/${DRIVE_NAME}_sizes.txt"
+find "$DEST_DIR" -type f -exec stat -f "%z %N" {} \; 2>/dev/null > "$SIZES_FILE" || \
+find "$DEST_DIR" -type f -exec stat -c "%s %n" {} \; 2>/dev/null > "$SIZES_FILE"
+log "✅ File sizes collected: $SIZES_FILE"
+log ""
+
 # Summary
 log "╔════════════════════════════════════════════════╗"
 log "║              STEP 1 COMPLETE                   ║"
