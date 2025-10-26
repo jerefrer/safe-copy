@@ -70,9 +70,16 @@ log ""
 
 # COPY FILES
 log "=== COPYING FILES (Priority: Get data off!) ==="
+log "Excluding macOS system directories (.Spotlight, .Trashes, etc.)"
 sudo rsync -avhx \
   --progress \
   --stats \
+  --exclude='.DocumentRevisions-V100' \
+  --exclude='.Spotlight-V100' \
+  --exclude='.TemporaryItems' \
+  --exclude='.Trashes' \
+  --exclude='.fseventsd' \
+  --exclude='.DS_Store' \
   --log-file="$LOG_DIR/${DRIVE_NAME}_rsync.log" \
   "$MOUNT_POINT/" "$DEST_DIR/" 2>&1 | tee -a "$LOG_FILE"
 
