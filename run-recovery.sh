@@ -28,6 +28,28 @@ print_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
+# Function to read with timeout (auto-continue after 10 seconds)
+# Usage: read_with_timeout "prompt" "default_value" timeout_seconds
+read_with_timeout() {
+    local prompt="$1"
+    local default="$2"
+    local timeout="${3:-10}"
+    
+    echo -n "$prompt"
+    
+    # Read with timeout
+    if read -t "$timeout" -n 1 -r REPLY; then
+        echo ""
+        return 0
+    else
+        # Timeout - use default
+        REPLY="$default"
+        echo ""
+        echo "(Auto-continuing with default after ${timeout}s)"
+        return 0
+    fi
+}
+
 # Function to check if a step was completed
 check_step_completed() {
     local step=$1
@@ -42,9 +64,29 @@ check_step_completed() {
             fi
             ;;
         2)
-            # Check if manifests exist
-            if [ -f "$dest_base/_manifests/${drive_name}_source_manifest.txt" ] && [ -f "$dest_base/_manifests/${drive_name}_manifest.txt" ]; then
-                return 0
+            # Check if manifests exist AND hashing is complete
+            local source_manifest="$dest_base/_manifests/${drive_name}_source_manifest.txt"
+            local dest_manifest="$dest_base/_manifests/${drive_name}_manifest.txt"
+            local source_state="$dest_base/_manifests/${drive_name}_source_state.txt"
+            local dest_state="$dest_base/_manifests/${drive_name}_dest_state.txt"
+            
+            if [ -f "$source_manifest" ] && [ -f "$dest_manifest" ]; then
+                # Check if state files indicate completion
+                # Count actual files in directories
+                local source_dir=$(diskutil info "$1" 2>/dev/null | grep "Mount Point" | cut -d: -f2 | xargs)
+                local dest_dir="$dest_base/video_rushes/$drive_name"
+                
+                if [ -f "$source_state" ] && [ -f "$dest_state" ]; then
+                    local source_hashed=$(wc -l < "$source_state" 2>/dev/null | xargs)
+                    local dest_hashed=$(wc -l < "$dest_state" 2>/dev/null | xargs)
+                    local source_total=$(find "$source_dir" -type f 2>/dev/null | wc -l | xargs)
+                    local dest_total=$(find "$dest_dir" -type f 2>/dev/null | wc -l | xargs)
+                    
+                    # Only consider complete if all files are hashed
+                    if [ "$source_hashed" -eq "$source_total" ] && [ "$dest_hashed" -eq "$dest_total" ] && [ "$source_total" -gt 0 ]; then
+                        return 0
+                    fi
+                fi
             fi
             ;;
         3)
@@ -146,16 +188,14 @@ echo ""
 
 # Step 1: Copy
 if [ "$STEP1_DONE" = true ]; then
-    read -p "Step 1 already completed. Re-run? (y/N): " -n 1 -r
-    echo ""
+    read_with_timeout "Step 1 already completed. Re-run? (y/N) [auto: N in 10s]: " "N" 10
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         RUN_STEP1=true
     else
         RUN_STEP1=false
     fi
 else
-    read -p "Run Step 1: Copy files? (Y/n): " -n 1 -r
-    echo ""
+    read_with_timeout "Run Step 1: Copy files? (Y/n) [auto: Y in 10s]: " "Y" 10
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         RUN_STEP1=true
     else
@@ -177,15 +217,15 @@ if [ "$RUN_STEP1" = true ]; then
         print_success "Step 1 completed successfully!"
     else
         print_error "Step 1 failed or completed with errors"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo ""
+        read_with_timeout "Continue anyway? (y/N) [auto: N in 10s]: " "N" 10
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     fi
     
     echo ""
-    read -p "Press Enter to continue..."
+    echo "Continuing to next step in 3 seconds..."
+    sleep 3
     clear
 fi
 
@@ -196,16 +236,14 @@ if [ "$STEP1_DONE" = false ]; then
 fi
 
 if [ "$STEP2_DONE" = true ]; then
-    read -p "Step 2 already completed. Re-run? (y/N): " -n 1 -r
-    echo ""
+    read_with_timeout "Step 2 already completed. Re-run? (y/N) [auto: N in 10s]: " "N" 10
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         RUN_STEP2=true
     else
         RUN_STEP2=false
     fi
 else
-    read -p "Run Step 2: Hash both drives? (Y/n): " -n 1 -r
-    echo ""
+    read_with_timeout "Run Step 2: Hash both drives? (Y/n) [auto: Y in 10s]: " "Y" 10
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         RUN_STEP2=true
     else
@@ -227,15 +265,15 @@ if [ "$RUN_STEP2" = true ]; then
         print_success "Step 2 completed successfully!"
     else
         print_error "Step 2 failed or completed with errors"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo ""
+        read_with_timeout "Continue anyway? (y/N) [auto: N in 10s]: " "N" 10
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     fi
     
     echo ""
-    read -p "Press Enter to continue..."
+    echo "Continuing to next step in 3 seconds..."
+    sleep 3
     clear
 fi
 
@@ -246,16 +284,14 @@ if [ "$STEP2_DONE" = false ]; then
 fi
 
 if [ "$STEP3_DONE" = true ]; then
-    read -p "Step 3 already completed. Re-run? (y/N): " -n 1 -r
-    echo ""
+    read_with_timeout "Step 3 already completed. Re-run? (y/N) [auto: N in 10s]: " "N" 10
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         RUN_STEP3=true
     else
         RUN_STEP3=false
     fi
 else
-    read -p "Run Step 3: Verify copy integrity? (Y/n): " -n 1 -r
-    echo ""
+    read_with_timeout "Run Step 3: Verify copy integrity? (Y/n) [auto: Y in 10s]: " "Y" 10
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         RUN_STEP3=true
     else
@@ -277,15 +313,15 @@ if [ "$RUN_STEP3" = true ]; then
         print_success "Step 3 completed successfully!"
     else
         print_error "Step 3 failed or found verification issues"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo ""
+        read_with_timeout "Continue anyway? (y/N) [auto: N in 10s]: " "N" 10
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     fi
     
     echo ""
-    read -p "Press Enter to continue..."
+    echo "Continuing to next step in 3 seconds..."
+    sleep 3
     clear
 fi
 
@@ -296,16 +332,14 @@ if [ "$STEP3_DONE" = false ] && [ "$STEP2_DONE" = false ]; then
 fi
 
 if [ "$STEP4_DONE" = true ]; then
-    read -p "Step 4 already completed. Re-run? (y/N): " -n 1 -r
-    echo ""
+    read_with_timeout "Step 4 already completed. Re-run? (y/N) [auto: N in 10s]: " "N" 10
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         RUN_STEP4=true
     else
         RUN_STEP4=false
     fi
 else
-    read -p "Run Step 4: Detect duplicates? (Y/n): " -n 1 -r
-    echo ""
+    read_with_timeout "Run Step 4: Detect duplicates? (Y/n) [auto: Y in 10s]: " "Y" 10
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         RUN_STEP4=true
     else
