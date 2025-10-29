@@ -79,8 +79,25 @@ check_step_completed() {
                 if [ -f "$source_state" ] && [ -f "$dest_state" ]; then
                     local source_hashed=$(wc -l < "$source_state" 2>/dev/null | xargs)
                     local dest_hashed=$(wc -l < "$dest_state" 2>/dev/null | xargs)
-                    local source_total=$(find "$source_dir" -type f 2>/dev/null | wc -l | xargs)
-                    local dest_total=$(find "$dest_dir" -type f 2>/dev/null | wc -l | xargs)
+                    # Count files excluding macOS metadata (same as step2-hash.sh)
+                    local source_total=$(find "$source_dir" -type f \
+                        -not -path "*/.DocumentRevisions-V100/*" \
+                        -not -path "*/.Spotlight-V100/*" \
+                        -not -path "*/.TemporaryItems/*" \
+                        -not -path "*/.Trashes/*" \
+                        -not -path "*/.fseventsd/*" \
+                        -not -name ".DS_Store" \
+                        -not -name "._*" \
+                        2>/dev/null | wc -l | xargs)
+                    local dest_total=$(find "$dest_dir" -type f \
+                        -not -path "*/.DocumentRevisions-V100/*" \
+                        -not -path "*/.Spotlight-V100/*" \
+                        -not -path "*/.TemporaryItems/*" \
+                        -not -path "*/.Trashes/*" \
+                        -not -path "*/.fseventsd/*" \
+                        -not -name ".DS_Store" \
+                        -not -name "._*" \
+                        2>/dev/null | wc -l | xargs)
                     
                     # Only consider complete if all files are hashed
                     if [ "$source_hashed" -eq "$source_total" ] && [ "$dest_hashed" -eq "$dest_total" ] && [ "$source_total" -gt 0 ]; then

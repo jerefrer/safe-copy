@@ -40,14 +40,16 @@ echo "║      STEP 3: VERIFY COPY INTEGRITY            ║"
 echo "╚════════════════════════════════════════════════╝"
 echo ""
 echo "Comparing manifests to verify copy integrity..."
+echo "(Excluding macOS system files and metadata)"
 echo ""
 
 # Parse both manifests and compare
 # Create temporary sorted hash lists (hash only, for comparison)
 # Format is CSV: size,hash,filename
 # Use sort -u to remove any duplicate entries from interrupted hashing
-awk -F',' '/^[0-9]/ {print $2}' "$SOURCE_MANIFEST" | sort -u > /tmp/source_hashes_$$.txt
-awk -F',' '/^[0-9]/ {print $2}' "$DEST_MANIFEST" | sort -u > /tmp/dest_hashes_$$.txt
+# Exclude macOS system files/directories
+awk -F',' '/^[0-9]/ && !/\.DS_Store/ && !/\/\._/ && !/\.DocumentRevisions-V100/ && !/\.Spotlight-V100/ && !/\.TemporaryItems/ && !/\.Trashes/ && !/\.fseventsd/ {print $2}' "$SOURCE_MANIFEST" | sort -u > /tmp/source_hashes_$$.txt
+awk -F',' '/^[0-9]/ && !/\.DS_Store/ && !/\/\._/ && !/\.DocumentRevisions-V100/ && !/\.Spotlight-V100/ && !/\.TemporaryItems/ && !/\.Trashes/ && !/\.fseventsd/ {print $2}' "$DEST_MANIFEST" | sort -u > /tmp/dest_hashes_$$.txt
 
 # Count files
 SOURCE_FILE_COUNT=$(wc -l < /tmp/source_hashes_$$.txt | xargs)

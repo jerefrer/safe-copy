@@ -83,9 +83,17 @@ hash_drive() {
         echo "##" >> "$manifest_file"
     fi
     
-    # Get list of all files
+    # Get list of all files (excluding macOS system files/directories)
     local file_list="/tmp/files_${drive_label}_$$.txt"
-    find "$drive_path" -type f 2>/dev/null | LC_ALL=C sort > "$file_list"
+    find "$drive_path" -type f \
+        -not -path "*/.DocumentRevisions-V100/*" \
+        -not -path "*/.Spotlight-V100/*" \
+        -not -path "*/.TemporaryItems/*" \
+        -not -path "*/.Trashes/*" \
+        -not -path "*/.fseventsd/*" \
+        -not -name ".DS_Store" \
+        -not -name "._*" \
+        2>/dev/null | LC_ALL=C sort > "$file_list"
     local total=$(wc -l < "$file_list" | xargs)
     eval "$total_files_var=$total"
     
@@ -120,11 +128,11 @@ hash_drive() {
             
             if [ $? -eq 0 ]; then
                 local hash=$(echo "$hash_output" | awk '{print $1}')
-                # ATOMIC: Write to state file FIRST, then manifest
-                # This way if interrupted, we skip the file on resume (safe)
-                # Rather than having it in manifest but not state (duplicate)
-                echo "$file" >> "$state_file"
+                # ATOMIC: Write to manifest FIRST, then state file
+                # This way if interrupted, file is in manifest but not state (will be skipped as duplicate on resume)
+                # Rather than in state but not manifest (would be skipped and never hashed)
                 echo "$size,$hash,$file" >> "$manifest_file"
+                echo "$file" >> "$state_file"
             fi
         fi
     done < "$file_list"
@@ -136,10 +144,26 @@ hash_drive() {
 
 echo "Counting files on both drives..."
 
-# Count files in parallel
-(find "$MOUNT_POINT" -type f 2>/dev/null | wc -l > /tmp/source_total_$$) &
+# Count files in parallel (excluding macOS metadata)
+(find "$MOUNT_POINT" -type f \
+    -not -path "*/.DocumentRevisions-V100/*" \
+    -not -path "*/.Spotlight-V100/*" \
+    -not -path "*/.TemporaryItems/*" \
+    -not -path "*/.Trashes/*" \
+    -not -path "*/.fseventsd/*" \
+    -not -name ".DS_Store" \
+    -not -name "._*" \
+    2>/dev/null | wc -l > /tmp/source_total_$$) &
 SOURCE_COUNT_PID=$!
-(find "$DEST_DIR" -type f 2>/dev/null | wc -l > /tmp/dest_total_$$) &
+(find "$DEST_DIR" -type f \
+    -not -path "*/.DocumentRevisions-V100/*" \
+    -not -path "*/.Spotlight-V100/*" \
+    -not -path "*/.TemporaryItems/*" \
+    -not -path "*/.Trashes/*" \
+    -not -path "*/.fseventsd/*" \
+    -not -name ".DS_Store" \
+    -not -name "._*" \
+    2>/dev/null | wc -l > /tmp/dest_total_$$) &
 DEST_COUNT_PID=$!
 
 wait $SOURCE_COUNT_PID

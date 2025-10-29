@@ -101,8 +101,22 @@ log ""
 # Collect file sizes for accurate progress tracking in step 2
 log "Collecting file size information for progress tracking..."
 SIZES_FILE="$MANIFEST_DIR/${DRIVE_NAME}_sizes.txt"
-find "$DEST_DIR" -type f -exec stat -f "%z %N" {} \; 2>/dev/null > "$SIZES_FILE" || \
-find "$DEST_DIR" -type f -exec stat -c "%s %n" {} \; 2>/dev/null > "$SIZES_FILE"
+find "$DEST_DIR" -type f \
+    -not -path "*/.DocumentRevisions-V100/*" \
+    -not -path "*/.Spotlight-V100/*" \
+    -not -path "*/.TemporaryItems/*" \
+    -not -path "*/.Trashes/*" \
+    -not -path "*/.fseventsd/*" \
+    -not -name ".DS_Store" \
+    -exec stat -f "%z %N" {} \; 2>/dev/null > "$SIZES_FILE" || \
+find "$DEST_DIR" -type f \
+    -not -path "*/.DocumentRevisions-V100/*" \
+    -not -path "*/.Spotlight-V100/*" \
+    -not -path "*/.TemporaryItems/*" \
+    -not -path "*/.Trashes/*" \
+    -not -path "*/.fseventsd/*" \
+    -not -name ".DS_Store" \
+    -exec stat -c "%s %n" {} \; 2>/dev/null > "$SIZES_FILE"
 log "✅ File sizes collected: $SIZES_FILE"
 log ""
 
@@ -111,7 +125,14 @@ log "╔════════════════════════
 log "║              STEP 1 COMPLETE                   ║"
 log "╚════════════════════════════════════════════════╝"
 log "Drive Name: $DRIVE_NAME"
-log "Total Files: $(find "$DEST_DIR" -type f 2>/dev/null | wc -l | xargs)"
+log "Total Files: $(find "$DEST_DIR" -type f \
+    -not -path "*/.DocumentRevisions-V100/*" \
+    -not -path "*/.Spotlight-V100/*" \
+    -not -path "*/.TemporaryItems/*" \
+    -not -path "*/.Trashes/*" \
+    -not -path "*/.fseventsd/*" \
+    -not -name ".DS_Store" \
+    2>/dev/null | wc -l | xargs)"
 log "Total Size: $(du -sh "$DEST_DIR" 2>/dev/null | cut -f1)"
 log "Copy Status: $COPY_STATUS"
 log "Completed: $(date)"
