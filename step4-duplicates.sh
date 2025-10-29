@@ -35,9 +35,8 @@ echo "Analyzing destination for duplicate files..."
 echo ""
 
 # Analyze duplicates
-awk '
+awk -F',' '
 BEGIN {
-    FS = ","
     total_wasted = 0
 }
 
@@ -51,8 +50,9 @@ BEGIN {
     filepath = $3
     for (i = 4; i <= NF; i++) filepath = filepath "," $i
     
-    # Skip if we've already seen this exact hash+filepath combination
-    # (handles duplicate manifest entries from interrupted hashing)
+    # Skip macOS metadata files
+    if (filepath ~ /\.DS_Store$/ || filepath ~ /\/\._/ || filepath ~ /\.DocumentRevisions-V100/ || filepath ~ /\.Spotlight-V100/ || filepath ~ /\.TemporaryItems/ || filepath ~ /\.Trashes/ || filepath ~ /\.fseventsd/) next
+    
     key = hash "||" filepath
     if (seen[key]) next
     seen[key] = 1
@@ -84,7 +84,7 @@ END {
     
     printf "\n============================================\n"
     if (dup_count == 0) {
-        printf "✅ No duplicates found!\n"
+        printf "No duplicates found!\n"
     } else {
         printf "Total duplicate sets: %d\n", dup_count
         printf "Total wasted space: %s bytes (%.2f GB)\n", total_wasted, total_wasted/1024/1024/1024
@@ -94,7 +94,7 @@ END {
 
 # Extract summary for display
 DUPE_COUNT=$(grep -c "Duplicate Set" "$DUPES_REPORT" || echo "0")
-WASTED_SPACE=$(grep "Total wasted space" "$DUPES_REPORT" | awk '{print $4, $5, $6}')
+WASTED_SPACE=$(grep "Total wasted space" "$DUPES_REPORT" | awk '{for(i=4;i<=NF;i++) printf "%s ", $i; print ""}')
 
 echo "=== DUPLICATE DETECTION RESULTS ==="
 if [ "$DUPE_COUNT" -eq 0 ]; then
