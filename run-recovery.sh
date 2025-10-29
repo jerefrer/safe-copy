@@ -55,6 +55,7 @@ check_step_completed() {
     local step=$1
     local drive_name=$2
     local dest_base=$3
+    local source_disk=$4
     
     case $step in
         1)
@@ -70,39 +71,18 @@ check_step_completed() {
             local source_state="$dest_base/_manifests/${drive_name}_source_state.txt"
             local dest_state="$dest_base/_manifests/${drive_name}_dest_state.txt"
             
-            if [ -f "$source_manifest" ] && [ -f "$dest_manifest" ]; then
-                # Check if state files indicate completion
-                # Count actual files in directories
-                local source_dir=$(diskutil info "$1" 2>/dev/null | grep "Mount Point" | cut -d: -f2 | xargs)
-                local dest_dir="$dest_base/video_rushes/$drive_name"
+            if [ -f "$source_manifest" ] && [ -f "$dest_manifest" ] && [ -f "$source_state" ] && [ -f "$dest_state" ]; then
+                # Count hashed files from state files
+                local source_hashed=$(wc -l < "$source_state" 2>/dev/null | xargs)
+                local dest_hashed=$(wc -l < "$dest_state" 2>/dev/null | xargs)
                 
-                if [ -f "$source_state" ] && [ -f "$dest_state" ]; then
-                    local source_hashed=$(wc -l < "$source_state" 2>/dev/null | xargs)
-                    local dest_hashed=$(wc -l < "$dest_state" 2>/dev/null | xargs)
-                    # Count files excluding macOS metadata (same as step2-hash.sh)
-                    local source_total=$(find "$source_dir" -type f \
-                        -not -path "*/.DocumentRevisions-V100/*" \
-                        -not -path "*/.Spotlight-V100/*" \
-                        -not -path "*/.TemporaryItems/*" \
-                        -not -path "*/.Trashes/*" \
-                        -not -path "*/.fseventsd/*" \
-                        -not -name ".DS_Store" \
-                        -not -name "._*" \
-                        2>/dev/null | wc -l | xargs)
-                    local dest_total=$(find "$dest_dir" -type f \
-                        -not -path "*/.DocumentRevisions-V100/*" \
-                        -not -path "*/.Spotlight-V100/*" \
-                        -not -path "*/.TemporaryItems/*" \
-                        -not -path "*/.Trashes/*" \
-                        -not -path "*/.fseventsd/*" \
-                        -not -name ".DS_Store" \
-                        -not -name "._*" \
-                        2>/dev/null | wc -l | xargs)
-                    
-                    # Only consider complete if all files are hashed
-                    if [ "$source_hashed" -eq "$source_total" ] && [ "$dest_hashed" -eq "$dest_total" ] && [ "$source_total" -gt 0 ]; then
-                        return 0
-                    fi
+                # Count data lines in manifests (excluding headers)
+                local source_manifest_lines=$(grep -c '^[0-9]' "$source_manifest" 2>/dev/null || echo "0")
+                local dest_manifest_lines=$(grep -c '^[0-9]' "$dest_manifest" 2>/dev/null || echo "0")
+                
+                # Consider complete if state files match manifest line counts and both have content
+                if [ "$source_hashed" -eq "$source_manifest_lines" ] && [ "$dest_hashed" -eq "$dest_manifest_lines" ] && [ "$source_hashed" -gt 0 ] && [ "$dest_hashed" -gt 0 ]; then
+                    return 0
                 fi
             fi
             ;;
@@ -179,22 +159,22 @@ STEP2_DONE=false
 STEP3_DONE=false
 STEP4_DONE=false
 
-if check_step_completed 1 "$DRIVE_NAME" "$DEST_BASE"; then
+if check_step_completed 1 "$DRIVE_NAME" "$DEST_BASE" "$SOURCE_DISK"; then
     STEP1_DONE=true
     print_success "Step 1 already completed (files exist)"
 fi
 
-if check_step_completed 2 "$DRIVE_NAME" "$DEST_BASE"; then
+if check_step_completed 2 "$DRIVE_NAME" "$DEST_BASE" "$SOURCE_DISK"; then
     STEP2_DONE=true
     print_success "Step 2 already completed (manifests exist)"
 fi
 
-if check_step_completed 3 "$DRIVE_NAME" "$DEST_BASE"; then
+if check_step_completed 3 "$DRIVE_NAME" "$DEST_BASE" "$SOURCE_DISK"; then
     STEP3_DONE=true
     print_success "Step 3 already completed (verification done)"
 fi
 
-if check_step_completed 4 "$DRIVE_NAME" "$DEST_BASE"; then
+if check_step_completed 4 "$DRIVE_NAME" "$DEST_BASE" "$SOURCE_DISK"; then
     STEP4_DONE=true
     print_success "Step 4 already completed (duplicates report exists)"
 fi
