@@ -71,9 +71,13 @@ log ""
 # COPY FILES
 log "=== COPYING FILES (Priority: Get data off!) ==="
 log "Excluding macOS system directories (.Spotlight, .Trashes, etc.)"
+log "Using I/O timeout (60s) to skip stuck files and reduce drive stress"
 sudo rsync -avhx \
   --progress \
   --stats \
+  --timeout=60 \
+  --ignore-errors \
+  --partial \
   --exclude='.DocumentRevisions-V100' \
   --exclude='.Spotlight-V100' \
   --exclude='.TemporaryItems' \
