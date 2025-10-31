@@ -80,6 +80,7 @@ sudo rsync -avhx \
   --exclude='.Trashes' \
   --exclude='.fseventsd' \
   --exclude='.DS_Store' \
+  --exclude='._*' \
   --log-file="$LOG_DIR/${DRIVE_NAME}_rsync.log" \
   "$MOUNT_POINT/" "$DEST_DIR/" 2>&1 | tee -a "$LOG_FILE"
 
@@ -108,6 +109,7 @@ find "$DEST_DIR" -type f \
     -not -path "*/.Trashes/*" \
     -not -path "*/.fseventsd/*" \
     -not -name ".DS_Store" \
+    -not -name "._*" \
     -exec stat -f "%z %N" {} \; 2>/dev/null > "$SIZES_FILE" || \
 find "$DEST_DIR" -type f \
     -not -path "*/.DocumentRevisions-V100/*" \
@@ -116,6 +118,7 @@ find "$DEST_DIR" -type f \
     -not -path "*/.Trashes/*" \
     -not -path "*/.fseventsd/*" \
     -not -name ".DS_Store" \
+    -not -name "._*" \
     -exec stat -c "%s %n" {} \; 2>/dev/null > "$SIZES_FILE"
 log "✅ File sizes collected: $SIZES_FILE"
 log ""
@@ -132,6 +135,7 @@ log "Total Files: $(find "$DEST_DIR" -type f \
     -not -path "*/.Trashes/*" \
     -not -path "*/.fseventsd/*" \
     -not -name ".DS_Store" \
+    -not -name "._*" \
     2>/dev/null | wc -l | xargs)"
 log "Total Size: $(du -sh "$DEST_DIR" 2>/dev/null | cut -f1)"
 log "Copy Status: $COPY_STATUS"
