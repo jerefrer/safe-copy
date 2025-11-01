@@ -60,7 +60,7 @@ check_step_completed() {
     case $step in
         1)
             # Check if destination directory exists and has files
-            if [ -d "$dest_base/video_rushes/$drive_name" ] && [ "$(find "$dest_base/video_rushes/$drive_name" -type f 2>/dev/null | head -n 1)" ]; then
+            if [ -d "$dest_base/$drive_name" ] && [ "$(find "$dest_base/$drive_name" -type f 2>/dev/null | head -n 1)" ]; then
                 return 0
             fi
             ;;
