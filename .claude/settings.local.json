@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(iostat:*)",
+      "Bash(diskutil list:*)",
+      "Bash(diskutil info:*)",
+      "Bash(awk:*)",
+      "Bash(sysctl:*)",
+      "Bash(dd:*)",
+      "Bash(pv:*)",
+      "Bash(time sha256sum:*)",
+      "Bash(time b2sum:*)",
+      "Bash(time md5:*)",
+      "Bash(bash:*)",
+      "Bash(source step2-hash.sh)",
+      "Bash(detect_hash_algorithm:*)",
+      "Bash(/tmp/hash_test/source/file1.txt)",
+      "Bash(/tmp/hash_test/source/file2.txt)",
+      "Bash(b2sum:*)",
+      "Bash(chmod:*)",
+      "Bash(pkill:*)",
+      "Bash(export)",
+      "Bash(pgrep:*)",
+      "Bash(export TEST_VAR=\"hello\")",
+      "Bash(xargs:*)",
+      "Bash(cat:*)",
+      "Bash(source /tmp/hash_worker_config_DEST_8532.sh)",
+      "Bash(echo:*)",
+      "Bash(which $HASH_CMD)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
